@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<title>Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
+:root {
+  --bg:#F5F4F0;--surface:#FFFFFF;--surface2:#FAFAF8;--border:#E8E6E0;
+  --text-primary:#1A1814;--text-secondary:#6B6760;--text-muted:#A09D97;
+  --accent:#2D6A4F;--accent-soft:#D8EDE3;
+  --warn:#C06014;--warn-soft:#FDF0E4;
+  --red:#C0392B;--red-soft:#FDECEA;
+  --radius-sm:8px;--radius:14px;--radius-lg:20px;
+  --shadow:0 1px 4px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.05);
+  --shadow-lg:0 8px 32px rgba(0,0,0,.10);
+  --font-display:'DM Serif Display',Georgia,serif;
+  --font-body:'DM Sans',system-ui,sans-serif;
+  --gap:16px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;background:var(--bg);color:var(--text-primary);font-family:var(--font-body);font-size:15px;-webkit-font-smoothing:antialiased;overscroll-behavior:none;}
+
+/* ── PIN SCREEN ── */
+#pin-screen{
+  position:fixed;inset:0;z-index:999;
+  background:var(--bg);
+  display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:24px;
+  padding:40px 24px;
+}
+#pin-screen.hidden{display:none;}
+.pin-card{
+  background:var(--surface);border:1.5px solid var(--border);
+  border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);
+  padding:36px 32px;text-align:center;width:100%;max-width:360px;
+}
+.pin-card h2{font-family:var(--font-display);font-size:24px;margin-bottom:6px;}
+.pin-card p{color:var(--text-secondary);font-size:14px;margin-bottom:24px;}
+.pin-dots{display:flex;gap:12px;justify-content:center;margin-bottom:24px;}
+.pin-dot{
+  width:14px;height:14px;border-radius:50%;
+  border:2px solid var(--border);background:transparent;
+  transition:background .15s,border-color .15s;
+}
+.pin-dot.filled{background:var(--accent);border-color:var(--accent);}
+.pin-numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+.pin-key{
+  padding:16px;border-radius:var(--radius);border:1.5px solid var(--border);
+  background:var(--surface2);font-size:20px;font-weight:500;
+  cursor:pointer;transition:background .12s,transform .1s;
+  font-family:var(--font-body);color:var(--text-primary);
+  -webkit-tap-highlight-color:transparent;
+}
+.pin-key:active{background:var(--border);transform:scale(.95);}
+.pin-key.wide{grid-column:span 2;}
+.pin-key.del{font-size:16px;}
+.pin-error{
+  color:var(--red);font-size:13px;font-weight:500;
+  min-height:18px;margin-top:-10px;margin-bottom:6px;
+}
+.pin-hint{font-size:12px;color:var(--text-muted);margin-top:12px;}
+
+/* ── MAIN APP ── */
+#app{display:grid;grid-template-rows:auto 1fr;height:100dvh;
+  padding:env(safe-area-inset-top,12px) env(safe-area-inset-right,0)
+          env(safe-area-inset-bottom,12px) env(safe-area-inset-left,0);
+  overflow:hidden;}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;gap:12px;}
+.header-left h1{font-family:var(--font-display);font-size:26px;letter-spacing:-.3px;line-height:1.1;}
+.header-left .date-sub{font-size:13px;color:var(--text-secondary);font-weight:400;margin-top:1px;}
+.header-right{display:flex;align-items:center;gap:10px;}
+.sync-info{font-size:11px;color:var(--text-muted);text-align:right;line-height:1.4;}
+.btn-icon{width:36px;height:36px;border-radius:50%;border:1.5px solid var(--border);background:var(--surface);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:background .15s,transform .1s;flex-shrink:0;}
+.btn-icon:active{transform:scale(.93);background:var(--border);}
+main{overflow-y:auto;overflow-x:hidden;padding:0 12px 20px;-webkit-overflow-scrolling:touch;}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap);max-width:1024px;margin:0 auto;}
+.tile-today{grid-column:1 / -1;}
+@media(max-width:600px){.tiles{grid-template-columns:1fr;}}
+.tile{background:var(--surface);border-radius:var(--radius-lg);border:1.5px solid var(--border);box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;}
+.tile-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px;border-bottom:1px solid var(--border);gap:8px;}
+.tile-title{font-family:var(--font-display);font-size:17px;display:flex;align-items:center;gap:7px;}
+.tile-body{flex:1;overflow-y:auto;padding:12px 14px;-webkit-overflow-scrolling:touch;}
+.today-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;}
+.today-col-label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);padding:10px 14px 6px;border-bottom:1px solid var(--border);}
+.today-col-label:first-child{border-right:1px solid var(--border);}
+.today-events,.today-todos{padding:8px 14px 12px;max-height:240px;overflow-y:auto;}
+.today-events{border-right:1px solid var(--border);}
+.event-row{display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid var(--border);}
+.event-row:last-child{border-bottom:none;}
+.event-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0;}
+.event-info{flex:1;min-width:0;}
+.event-title{font-weight:500;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.event-time{font-size:12px;color:var(--text-secondary);margin-top:1px;}
+.event-loc{font-size:11px;color:var(--text-muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.todo-row{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent;}
+.todo-row:last-child{border-bottom:none;}
+.todo-row.completed .todo-title{text-decoration:line-through;color:var(--text-muted);}
+.todo-check{width:18px;height:18px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;transition:background .15s,border-color .15s;}
+.todo-row.completed .todo-check{background:var(--accent);border-color:var(--accent);color:white;}
+.todo-title{font-size:14px;font-weight:400;flex:1;min-width:0;}
+.todo-due{font-size:11px;color:var(--text-muted);flex-shrink:0;}
+.todo-due.overdue{color:var(--red);}
+.priority-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.list-filter{display:flex;gap:6px;flex-wrap:wrap;padding:8px 14px 10px;border-bottom:1px solid var(--border);}
+.list-chip{font-size:12px;font-weight:500;padding:3px 10px;border-radius:20px;border:1.5px solid var(--border);background:var(--surface2);cursor:pointer;transition:background .12s;white-space:nowrap;-webkit-tap-highlight-color:transparent;}
+.list-chip.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);}
+.weather-body{display:flex;align-items:center;gap:16px;padding:14px 16px;}
+.weather-icon{font-size:44px;line-height:1;}
+.weather-main .temp{font-family:var(--font-display);font-size:42px;line-height:1;letter-spacing:-1px;}
+.weather-main .condition{font-size:14px;color:var(--text-secondary);margin-top:2px;}
+.weather-main .location{font-size:11px;color:var(--text-muted);margin-top:1px;}
+.weather-details{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;padding-left:16px;border-left:1px solid var(--border);}
+.wd-item{font-size:12px;}.wd-label{color:var(--text-muted);font-size:11px;}
+
+/* ── SETTINGS PANEL ── */
+#settings-panel{position:fixed;inset:0;z-index:100;display:none;align-items:flex-end;}
+#settings-panel.open{display:flex;}
+.settings-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.3);backdrop-filter:blur(2px);}
+.settings-sheet{position:relative;z-index:1;width:100%;max-width:480px;margin:0 auto;background:var(--surface);border-radius:var(--radius-lg) var(--radius-lg) 0 0;padding:20px 20px 36px;box-shadow:var(--shadow-lg);animation:slideUp .25s ease;}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.settings-sheet h2{font-family:var(--font-display);font-size:20px;margin-bottom:16px;}
+.settings-section-label{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;margin-top:16px;}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);}
+.toggle-row:last-child{border-bottom:none;}
+.toggle-label{font-size:14px;font-weight:500;}.toggle-sub{font-size:12px;color:var(--text-muted);}
+.toggle{position:relative;width:44px;height:26px;cursor:pointer;}
+.toggle input{opacity:0;width:0;height:0;}
+.toggle-track{position:absolute;inset:0;border-radius:13px;background:var(--border);transition:background .2s;}
+.toggle input:checked+.toggle-track{background:var(--accent);}
+.toggle-thumb{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s;}
+.toggle input:checked~.toggle-thumb{transform:translateX(18px);}
+.settings-input{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:14px;background:var(--surface2);margin-top:6px;outline:none;}
+.settings-input:focus{border-color:var(--accent);}
+.btn-primary{margin-top:16px;width:100%;padding:12px;border-radius:var(--radius);border:none;background:var(--accent);color:white;font-family:var(--font-body);font-size:15px;font-weight:600;cursor:pointer;transition:opacity .15s;}
+.btn-primary:active{opacity:.8;}
+.btn-secondary{margin-top:8px;width:100%;padding:12px;border-radius:var(--radius);border:1.5px solid var(--border);background:var(--surface);color:var(--text-primary);font-family:var(--font-body);font-size:15px;font-weight:500;cursor:pointer;}
+.lock-btn{font-size:12px;color:var(--text-muted);text-align:center;margin-top:12px;cursor:pointer;text-decoration:underline;}
+
+.empty{color:var(--text-muted);font-size:13px;padding:12px 0;text-align:center;}
+.skeleton{background:linear-gradient(90deg,var(--border) 25%,var(--surface2) 50%,var(--border) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:6px;height:14px;margin:6px 0;}
+@keyframes shimmer{to{background-position:-200% 0}}
+.spin{animation:spin .8s linear infinite;display:inline-block;}
+@keyframes spin{to{transform:rotate(360deg)}}
+#toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:var(--text-primary);color:white;font-size:13px;padding:8px 18px;border-radius:20px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:200;white-space:nowrap;}
+#toast.show{opacity:1;}
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+</style>
+</head>
+<body>
+
+<!-- PIN SCREEN -->
+<div id="pin-screen">
+  <div class="pin-card">
+    <h2>Dashboard</h2>
+    <p>Enter your PIN to access</p>
+    <div class="pin-dots" id="pin-dots">
+      <div class="pin-dot" id="pd0"></div>
+      <div class="pin-dot" id="pd1"></div>
+      <div class="pin-dot" id="pd2"></div>
+      <div class="pin-dot" id="pd3"></div>
+    </div>
+    <div class="pin-error" id="pin-error"></div>
+    <div class="pin-numpad" id="pin-numpad">
+      <button class="pin-key" onclick="pinKey('1')">1</button>
+      <button class="pin-key" onclick="pinKey('2')">2</button>
+      <button class="pin-key" onclick="pinKey('3')">3</button>
+      <button class="pin-key" onclick="pinKey('4')">4</button>
+      <button class="pin-key" onclick="pinKey('5')">5</button>
+      <button class="pin-key" onclick="pinKey('6')">6</button>
+      <button class="pin-key" onclick="pinKey('7')">7</button>
+      <button class="pin-key" onclick="pinKey('8')">8</button>
+      <button class="pin-key" onclick="pinKey('9')">9</button>
+      <button class="pin-key wide" onclick="pinKey('0')">0</button>
+      <button class="pin-key del" onclick="pinDel()">⌫</button>
+    </div>
+    <div class="pin-hint">PIN is shared with anyone you give the URL to</div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+  <header>
+    <div class="header-left">
+      <h1 id="header-date">Good morning</h1>
+      <div class="date-sub" id="header-datestr">Loading…</div>
+    </div>
+    <div class="header-right">
+      <div class="sync-info">
+        <div id="sync-label">Syncing…</div>
+        <div id="next-refresh" style="color:var(--text-muted)"></div>
+      </div>
+      <button class="btn-icon" id="btn-refresh" title="Refresh" onclick="refreshAll()">↻</button>
+      <button class="btn-icon" title="Settings" onclick="openSettings()">⚙</button>
+    </div>
+  </header>
+  <main>
+    <div class="tiles">
+      <!-- TODAY -->
+      <div class="tile tile-today">
+        <div class="tile-header">
+          <span class="tile-title"><span class="icon">☀️</span> Today</span>
+          <span style="font-size:12px;color:var(--text-muted)" id="today-count"></span>
+        </div>
+        <div class="today-grid">
+          <div class="today-col-label">Events</div>
+          <div class="today-col-label">To‑Do</div>
+          <div class="today-events" id="today-events"><div class="skeleton"></div><div class="skeleton" style="width:70%"></div></div>
+          <div class="today-todos" id="today-todos"><div class="skeleton"></div><div class="skeleton" style="width:80%"></div></div>
+        </div>
+      </div>
+      <!-- WEATHER -->
+      <div class="tile" id="tile-weather">
+        <div class="tile-header">
+          <span class="tile-title"><span class="icon">🌤</span> Weather</span>
+          <span style="font-size:11px;color:var(--text-muted)" id="weather-location-label"></span>
+        </div>
+        <div class="weather-body" id="weather-body">
+          <div style="flex:1"><div class="skeleton"></div><div class="skeleton" style="width:60%"></div></div>
+        </div>
+      </div>
+      <!-- REMINDERS -->
+      <div class="tile">
+        <div class="tile-header">
+          <span class="tile-title"><span class="icon">✅</span> Reminders</span>
+          <span style="font-size:12px;color:var(--text-muted)" id="reminder-count"></span>
+        </div>
+        <div class="list-filter" id="list-filter"></div>
+        <div class="tile-body" id="reminders-list"><div class="skeleton"></div><div class="skeleton" style="width:75%"></div></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- SETTINGS PANEL -->
+<div id="settings-panel">
+  <div class="settings-backdrop" onclick="closeSettings()"></div>
+  <div class="settings-sheet">
+    <h2>Settings</h2>
+    <div class="settings-section-label">Weather</div>
+    <label>Location (city, state)
+      <input class="settings-input" id="set-weather-loc" placeholder="e.g. Albuquerque, NM" />
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:14px;">
+      <input type="checkbox" id="set-units" /> Show in Celsius
+    </label>
+    <div class="settings-section-label">Reminder Lists</div>
+    <div id="list-toggles"></div>
+    <button class="btn-primary" onclick="saveSettings()">Save Settings</button>
+    <button class="btn-secondary" onclick="closeSettings()">Cancel</button>
+    <div class="lock-btn" onclick="lockDashboard()">🔒 Lock dashboard</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── CONFIG — replace these two values with your Supabase project ──────────────
+const SUPABASE_URL      = "https://YOUR_PROJECT.supabase.co";
+const SUPABASE_ANON     = "YOUR_ANON_KEY";
+// Your deployed Edge Function URL (from: supabase functions deploy verify-pin)
+const VERIFY_PIN_URL    = "https://YOUR_PROJECT.supabase.co/functions/v1/verify-pin";
+// ─────────────────────────────────────────────────────────────────────────────
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// ── PIN state ─────────────────────────────────────────────────────────────────
+let pinBuffer = "";
+const PIN_MAX = 4;       // adjust if your PIN is longer
+const SESSION_KEY = "dash_session_token";
+
+async function checkExistingSession() {
+  const token = sessionStorage.getItem(SESSION_KEY);
+  if (!token) return false;
+  try {
+    const res = await fetch(VERIFY_PIN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token })
+    });
+    const data = await res.json();
+    return data.valid === true;
+  } catch { return false; }
+}
+
+function updatePinDots() {
+  for (let i = 0; i < PIN_MAX; i++) {
+    document.getElementById("pd" + i)?.classList.toggle("filled", i < pinBuffer.length);
+  }
+}
+
+function pinKey(digit) {
+  if (pinBuffer.length >= PIN_MAX) return;
+  pinBuffer += digit;
+  updatePinDots();
+  document.getElementById("pin-error").textContent = "";
+  if (pinBuffer.length === PIN_MAX) submitPin();
+}
+
+function pinDel() {
+  pinBuffer = pinBuffer.slice(0, -1);
+  updatePinDots();
+}
+
+async function submitPin() {
+  // Disable numpad while checking
+  document.querySelectorAll(".pin-key").forEach(b => b.disabled = true);
+  try {
+    const res = await fetch(VERIFY_PIN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin: pinBuffer })
+    });
+    const data = await res.json();
+    if (data.valid && data.token) {
+      sessionStorage.setItem(SESSION_KEY, data.token);
+      unlockDashboard();
+    } else {
+      document.getElementById("pin-error").textContent = "Incorrect PIN — try again";
+      pinBuffer = "";
+      updatePinDots();
+    }
+  } catch(e) {
+    document.getElementById("pin-error").textContent = "Connection error — try again";
+    pinBuffer = "";
+    updatePinDots();
+  }
+  document.querySelectorAll(".pin-key").forEach(b => b.disabled = false);
+}
+
+function unlockDashboard() {
+  document.getElementById("pin-screen").classList.add("hidden");
+  initDashboard();
+}
+
+function lockDashboard() {
+  sessionStorage.removeItem(SESSION_KEY);
+  closeSettings();
+  pinBuffer = "";
+  updatePinDots();
+  document.getElementById("pin-error").textContent = "";
+  document.getElementById("pin-screen").classList.remove("hidden");
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let allReminders  = [];
+let reminderLists = [];
+let activeListIds = new Set();
+let refreshTimer  = null;
+let nextRefreshAt = null;
+let settings      = { weatherLocation: "Albuquerque, NM", units: "imperial" };
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", async () => {
+  const valid = await checkExistingSession();
+  if (valid) {
+    unlockDashboard();
+  }
+  // else: PIN screen stays visible
+});
+
+async function initDashboard() {
+  updateHeader();
+  await loadSettings();
+  await refreshAll();
+  scheduleNextRefresh();
+  subscribeRealtime();
+}
+
+function updateHeader() {
+  const now = new Date();
+  const h = now.getHours();
+  const greeting = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+  document.getElementById("header-date").textContent = greeting;
+  document.getElementById("header-datestr").textContent = now.toLocaleDateString("en-US", {
+    weekday: "long", month: "long", day: "numeric"
+  });
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+async function loadSettings() {
+  try {
+    const { data } = await sb.from("dashboard_settings").select("*");
+    if (!data) return;
+    data.forEach(row => {
+      if (row.key === "weather_location") settings.weatherLocation = JSON.parse(row.value);
+      if (row.key === "weather_units")    settings.units = JSON.parse(row.value);
+      if (row.key === "last_synced")      updateSyncLabel(JSON.parse(row.value));
+    });
+  } catch(e) { console.warn("Settings load failed", e); }
+}
+
+async function saveSettings() {
+  const loc   = document.getElementById("set-weather-loc").value.trim() || settings.weatherLocation;
+  const units = document.getElementById("set-units").checked ? "metric" : "imperial";
+  settings.weatherLocation = loc;
+  settings.units = units;
+
+  reminderLists.forEach(list => {
+    const el = document.getElementById("toggle-" + list.id);
+    if (el) list.visible = el.checked;
+  });
+  activeListIds = new Set(reminderLists.filter(l => l.visible).map(l => l.id));
+
+  await sb.from("dashboard_settings").upsert([
+    { key: "weather_location", value: JSON.stringify(loc) },
+    { key: "weather_units",    value: JSON.stringify(units) }
+  ], { onConflict: "key" });
+
+  for (const list of reminderLists) {
+    await sb.from("reminder_lists").update({ visible: list.visible }).eq("id", list.id);
+  }
+
+  closeSettings();
+  toast("Settings saved");
+  renderReminders();
+  fetchWeather();
+}
+
+function openSettings() {
+  document.getElementById("set-weather-loc").value = settings.weatherLocation;
+  document.getElementById("set-units").checked = settings.units === "metric";
+  const wrap = document.getElementById("list-toggles");
+  wrap.innerHTML = reminderLists.map(list => `
+    <div class="toggle-row">
+      <div class="toggle-label" style="display:flex;align-items:center;gap:6px;">
+        <span style="width:10px;height:10px;border-radius:50%;background:${list.color};display:inline-block;"></span>
+        ${esc(list.name)}
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="toggle-${list.id}" ${list.visible !== false ? "checked" : ""} />
+        <span class="toggle-track"></span>
+        <span class="toggle-thumb"></span>
+      </label>
+    </div>`).join("");
+  document.getElementById("settings-panel").classList.add("open");
+}
+function closeSettings() {
+  document.getElementById("settings-panel").classList.remove("open");
+}
+
+// ── Refresh ───────────────────────────────────────────────────────────────────
+async function refreshAll() {
+  const btn = document.getElementById("btn-refresh");
+  btn.innerHTML = '<span class="spin">↻</span>';
+  btn.disabled = true;
+  updateHeader();
+  await Promise.allSettled([fetchEvents(), fetchReminders(), fetchWeather()]);
+  scheduleNextRefresh();
+  btn.innerHTML = "↻";
+  btn.disabled = false;
+}
+
+function scheduleNextRefresh() {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  nextRefreshAt = Date.now() + 30 * 60 * 1000;
+  refreshTimer  = setTimeout(() => refreshAll(), 30 * 60 * 1000);
+  updateCountdown();
+}
+
+function updateCountdown() {
+  const el = document.getElementById("next-refresh");
+  const remaining = Math.round((nextRefreshAt - Date.now()) / 60000);
+  el.textContent = `Next refresh in ${remaining}m`;
+  setTimeout(updateCountdown, 60000);
+}
+
+function updateSyncLabel(isoStr) {
+  const el = document.getElementById("sync-label");
+  if (!isoStr) { el.textContent = "Not yet synced"; return; }
+  const d = new Date(isoStr);
+  el.textContent = "Synced " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+// ── Events ────────────────────────────────────────────────────────────────────
+async function fetchEvents() {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+  const end   = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString();
+  const { data, error } = await sb.from("calendar_events").select("*")
+    .gte("start_time", start).lt("start_time", end).order("start_time");
+  renderTodayEvents(error ? [] : data || []);
+}
+
+function renderTodayEvents(events) {
+  const el = document.getElementById("today-events");
+  if (!events.length) { el.innerHTML = '<div class="empty">No events today</div>'; return; }
+  document.getElementById("today-count").textContent = `${events.length} event${events.length > 1 ? "s" : ""}`;
+  el.innerHTML = events.map(ev => {
+    const timeStr = ev.all_day ? "All day" : fmtTime(ev.start_time) + (ev.end_time ? " – " + fmtTime(ev.end_time) : "");
+    return `<div class="event-row">
+      <div class="event-dot" style="background:${esc(ev.calendar_color || "#4A90D9")}"></div>
+      <div class="event-info">
+        <div class="event-title">${esc(ev.title)}</div>
+        <div class="event-time">${timeStr}</div>
+        ${ev.location ? `<div class="event-loc">📍 ${esc(ev.location)}</div>` : ""}
+      </div></div>`;
+  }).join("");
+}
+
+// ── Reminders ─────────────────────────────────────────────────────────────────
+async function fetchReminders() {
+  const { data: lists } = await sb.from("reminder_lists").select("*").order("name");
+  if (lists) {
+    lists.forEach(l => {
+      const ex = reminderLists.find(r => r.id === l.id);
+      if (ex) l.visible = ex.visible;
+    });
+    reminderLists = lists;
+    activeListIds = new Set(lists.filter(l => l.visible !== false).map(l => l.id));
+  }
+  const { data: todos } = await sb.from("reminders").select("*")
+    .eq("completed", false).order("priority").order("due_date");
+  allReminders = todos || [];
+  renderListFilter();
+  renderReminders();
+  renderTodayTodos();
+}
+
+function renderListFilter() {
+  const el = document.getElementById("list-filter");
+  if (!reminderLists.length) { el.innerHTML = ""; return; }
+  el.innerHTML = reminderLists.map(list => `
+    <div class="list-chip ${activeListIds.has(list.id) ? "active" : ""}"
+         style="${activeListIds.has(list.id) ? `background:${hexSoft(list.color)};border-color:${list.color};color:${list.color}` : ""}"
+         onclick="toggleList('${list.id}', this, '${list.color}')">
+      ${esc(list.name)}</div>`).join("");
+}
+
+function toggleList(listId, el, color) {
+  if (activeListIds.has(listId)) {
+    activeListIds.delete(listId); el.classList.remove("active"); el.style = "";
+  } else {
+    activeListIds.add(listId); el.classList.add("active");
+    el.style = `background:${hexSoft(color)};border-color:${color};color:${color}`;
+  }
+  renderReminders();
+}
+
+function renderReminders() {
+  const el    = document.getElementById("reminders-list");
+  const todos = allReminders.filter(r => activeListIds.has(r.list_id));
+  document.getElementById("reminder-count").textContent = todos.length ? `${todos.length} pending` : "";
+  if (!todos.length) { el.innerHTML = '<div class="empty">All clear ✓</div>'; return; }
+  el.innerHTML = todos.map(t => todoRowHTML(t)).join("");
+}
+
+function renderTodayTodos() {
+  const today = new Date().toDateString();
+  const el    = document.getElementById("today-todos");
+  const due   = allReminders.filter(r => r.due_date && new Date(r.due_date).toDateString() === today);
+  if (!due.length) { el.innerHTML = '<div class="empty">No todos due today</div>'; return; }
+  el.innerHTML = due.map(t => todoRowHTML(t)).join("");
+}
+
+function todoRowHTML(todo) {
+  const overdue = todo.due_date && new Date(todo.due_date) < new Date() && !todo.completed;
+  const dueStr  = todo.due_date ? fmtDate(todo.due_date) : "";
+  const priorityColor = todo.priority <= 1 ? "#E74C3C" : todo.priority <= 5 ? "#F39C12" : "transparent";
+  return `<div class="todo-row ${todo.completed ? "completed" : ""}" data-id="${todo.id}" data-account="${esc(todo.icloud_account || 'owner')}" onclick="toggleTodo(this)">
+    <div class="priority-dot" style="background:${priorityColor}"></div>
+    <div class="todo-check">${todo.completed ? "✓" : ""}</div>
+    <div class="todo-title">${esc(todo.title)}</div>
+    ${dueStr ? `<div class="todo-due ${overdue ? "overdue" : ""}">${dueStr}</div>` : ""}
+  </div>`;
+}
+
+async function toggleTodo(rowEl) {
+  const id      = rowEl.dataset.id;
+  const account = rowEl.dataset.account || "owner";
+  const isNowComplete = !rowEl.classList.contains("completed");
+
+  // Optimistic UI update
+  rowEl.classList.toggle("completed", isNowComplete);
+  rowEl.querySelector(".todo-check").textContent = isNowComplete ? "✓" : "";
+
+  // 1. Update Supabase reminders table immediately
+  await sb.from("reminders").update({
+    completed:    isNowComplete,
+    completed_at: isNowComplete ? new Date().toISOString() : null
+  }).eq("id", id);
+
+  // 2. Queue the write-back to iCloud (picked up by the 5-min Action)
+  await sb.from("completion_queue").insert({
+    reminder_id:    id,
+    list_id:        allReminders.find(r => r.id === id)?.list_id || "",
+    completed:      isNowComplete,
+    icloud_account: account,
+  });
+
+  // 3. Re-fetch after short delay so UI is consistent
+  setTimeout(() => fetchReminders(), 800);
+}
+
+// ── Weather ───────────────────────────────────────────────────────────────────
+const WMO_CODES = {0:"Clear sky",1:"Mainly clear",2:"Partly cloudy",3:"Overcast",45:"Fog",48:"Icy fog",51:"Light drizzle",53:"Drizzle",55:"Heavy drizzle",61:"Light rain",63:"Rain",65:"Heavy rain",71:"Light snow",73:"Snow",75:"Heavy snow",77:"Snow grains",80:"Light showers",81:"Showers",82:"Heavy showers",85:"Snow showers",86:"Heavy snow showers",95:"Thunderstorm",96:"Thunderstorm w/ hail",99:"Heavy thunderstorm w/ hail"};
+const WMO_ICONS = {0:"☀️",1:"🌤",2:"⛅",3:"☁️",45:"🌫",48:"🌫",51:"🌦",53:"🌦",55:"🌧",61:"🌧",63:"🌧",65:"🌧",71:"🌨",73:"❄️",75:"❄️",77:"🌨",80:"🌦",81:"🌧",82:"⛈",85:"🌨",86:"❄️",95:"⛈",96:"⛈",99:"⛈"};
+
+async function fetchWeather() {
+  const loc = settings.weatherLocation || "Albuquerque, NM";
+  document.getElementById("weather-location-label").textContent = loc;
+  try {
+    const geoRes  = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1`,{headers:{"Accept-Language":"en"}});
+    const geoData = await geoRes.json();
+    if (!geoData.length) throw new Error("Location not found");
+    const { lat, lon } = geoData[0];
+    const unit = settings.units === "metric" ? "celsius" : "fahrenheit";
+    const wx = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m&temperature_unit=${unit}&wind_speed_unit=mph&timezone=auto`);
+    const wdata = await wx.json();
+    const cur = wdata.current;
+    const code = cur.weather_code;
+    const deg = settings.units === "metric" ? "°C" : "°F";
+    document.getElementById("weather-body").innerHTML = `
+      <div class="weather-icon">${WMO_ICONS[code]||"🌡"}</div>
+      <div class="weather-main">
+        <div class="temp">${Math.round(cur.temperature_2m)}${deg}</div>
+        <div class="condition">${WMO_CODES[code]||"Unknown"}</div>
+        <div class="location">${esc(loc)}</div>
+      </div>
+      <div class="weather-details">
+        <div class="wd-item"><div class="wd-label">Feels like</div>${Math.round(cur.apparent_temperature)}${deg}</div>
+        <div class="wd-item"><div class="wd-label">Humidity</div>${cur.relative_humidity_2m}%</div>
+        <div class="wd-item"><div class="wd-label">Wind</div>${Math.round(cur.wind_speed_10m)} mph</div>
+        <div class="wd-item"><div class="wd-label">Updated</div>${fmtTime(cur.time)}</div>
+      </div>`;
+  } catch(e) {
+    document.getElementById("weather-body").innerHTML = '<div class="empty">Weather unavailable — check location in Settings</div>';
+  }
+}
+
+// ── Realtime ──────────────────────────────────────────────────────────────────
+function subscribeRealtime() {
+  sb.channel("dashboard")
+    .on("postgres_changes",{event:"*",schema:"public",table:"reminders"},()=>fetchReminders())
+    .on("postgres_changes",{event:"*",schema:"public",table:"calendar_events"},()=>fetchEvents())
+    .on("postgres_changes",{event:"*",schema:"public",table:"dashboard_settings"},()=>loadSettings().then(()=>fetchWeather()))
+    .subscribe();
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function esc(s){if(!s)return"";return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function fmtTime(iso){if(!iso)return"";return new Date(iso).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});}
+function fmtDate(iso){if(!iso)return"";const d=new Date(iso);const today=new Date();if(d.toDateString()===today.toDateString())return"Today";return d.toLocaleDateString("en-US",{month:"short",day:"numeric"});}
+function hexSoft(hex){try{const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return`rgba(${r},${g},${b},0.12)`;}catch{return"var(--accent-soft)";}}
+function toast(msg){const el=document.getElementById("toast");el.textContent=msg;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),2200);}
+</script>
+</body>
+</html>
