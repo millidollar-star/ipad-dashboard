@@ -1,4 +1,4 @@
-# iPad Dashboard
+# iPad Dashboard 
 
 A clean, live personal dashboard for iPad — powered by Supabase and hosted on GitHub Pages.
 Pulls Apple Calendar events and Reminders via iCloud CalDAV, synced to Supabase every 30 minutes
