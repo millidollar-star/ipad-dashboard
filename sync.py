@@ -38,7 +38,8 @@ PARTNER_USER = os.environ.get("PARTNER_ICLOUD_USERNAME", "")
 PARTNER_PASS = os.environ.get("PARTNER_ICLOUD_PASSWORD", "")
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
-CALDAV_URL   = "https://caldav.icloud.com"
+CALDAV_URL      = "https://caldav.icloud.com"
+REMINDERS_URL   = "https://reminders.icloud.com"   # separate iCloud endpoint for Reminders
 SYNC_WINDOW_DAYS = 14
 
 sb: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -67,6 +68,14 @@ def connect(username, password, label=""):
     client = caldav.DAVClient(url=CALDAV_URL, username=username, password=password)
     client.principal()
     log.info("  Connected.")
+    return client
+
+def connect_reminders(username, password, label=""):
+    """Connect to the separate iCloud Reminders CalDAV endpoint."""
+    log.info(f"Connecting to iCloud Reminders ({label or username})...")
+    client = caldav.DAVClient(url=REMINDERS_URL, username=username, password=password)
+    client.principal()
+    log.info("  Connected to Reminders.")
     return client
 
 def sync_calendars(client, account_label):
@@ -117,16 +126,22 @@ def sync_reminders(client, account_label):
     lists_batch = []
     todos_batch = []
 
-    for cal in client.principal().calendars():
+    all_cals = client.principal().calendars()
+    log.info(f"[{account_label}] Found {len(all_cals)} calendar(s) on reminders endpoint")
+
+    for cal in all_cals:
         try:
+            log.info(f"[{account_label}]   Checking: '{cal.name}'")
             todos = cal.todos(include_completed=False)
             if not todos:
+                log.info(f"[{account_label}]     → No todos")
                 continue
             list_id = str(cal.url).strip("/").split("/")[-1]
             list_name = cal.name or "Reminders"
             if account_label == "partner":
                 list_name = f"[Partner] {list_name}"
 
+            log.info(f"[{account_label}]     → {len(todos)} todo(s) found")
             lists_batch.append({
                 "id": list_id,
                 "name": list_name,
@@ -248,15 +263,24 @@ def main():
     if SYNC_MODE == "writeback":
         process_write_back_queue()
     else:
+        # Calendars — standard CalDAV endpoint
         owner_client = connect(OWNER_USER, OWNER_PASS, "owner")
         sync_calendars(owner_client, "owner")
-        sync_reminders(owner_client, "owner")
+
+        # Reminders — separate iCloud endpoint
+        try:
+            owner_reminders_client = connect_reminders(OWNER_USER, OWNER_PASS, "owner")
+            sync_reminders(owner_reminders_client, "owner")
+        except Exception as e:
+            log.error(f"Owner reminders sync failed: {e}")
+
         if PARTNER_USER:
             try:
-                partner_client = connect(PARTNER_USER, PARTNER_PASS, "partner")
-                sync_reminders(partner_client, "partner")
+                partner_reminders_client = connect_reminders(PARTNER_USER, PARTNER_PASS, "partner")
+                sync_reminders(partner_reminders_client, "partner")
             except Exception as e:
-                log.error(f"Partner iCloud sync failed: {e}")
+                log.error(f"Partner reminders sync failed: {e}")
+
         process_write_back_queue()
         update_last_synced()
     log.info("Done.")
