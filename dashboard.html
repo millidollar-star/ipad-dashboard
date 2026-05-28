@@ -273,6 +273,11 @@ main{overflow-y:auto;overflow-x:hidden;padding:0 12px 20px;-webkit-overflow-scro
         <div class="tile-body" id="reminders-list" style="max-height:280px;">
           <div class="skeleton"></div><div class="skeleton" style="width:75%"></div>
         </div>
+        <div class="todo-add" id="reminders-add" style="display:none;">
+          <input class="todo-input" id="reminders-input" placeholder="Add to list…"
+            onkeydown="if(event.key==='Enter')addToActiveList()" />
+          <button class="todo-add-btn" onclick="addToActiveList()">Add</button>
+        </div>
       </div>
 
       <!-- PINNED LIST TILES inserted here dynamically -->
@@ -617,6 +622,41 @@ async function addTodo() {
   toast("Added — will sync to Reminders shortly");
 }
 
+async function addToActiveList() {
+  if (!activeListId) { toast("Select a list first"); return; }
+  const list = reminderLists.find(l => l.id === activeListId);
+  if (!list) return;
+  await addToList(activeListId, list.name, "reminders-input");
+}
+
+async function addToList(listId, listName, inputId) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const title = input.value.trim();
+  if (!title) return;
+  input.value = "";
+
+  const list = reminderLists.find(l => l.id === listId);
+  if (!list) { toast(`List not found`); return; }
+
+  const newId  = crypto.randomUUID();
+  const now    = new Date().toISOString();
+  const newTodo = {
+    id: newId, list_id: listId, list_name: listName,
+    title, notes: null, due_date: null, completed: false,
+    completed_at: null, priority: 0, icloud_account: "owner", synced_at: now
+  };
+  allReminders.unshift(newTodo);
+
+  // Re-render the relevant tile immediately
+  if (listName.toLowerCase() === todoListName.toLowerCase()) renderTodoTile();
+  if (listId === activeListId) renderRemindersTile();
+  if (pinnedListIds.includes(listId)) renderPinnedTiles();
+
+  await sb.from("reminders").insert(newTodo);
+  toast("Added — will sync to Reminders shortly");
+}
+
 // ── Reminders tile (single-select) ────────────────────────────────────────────
 async function fetchReminders() {
   const { data: lists } = await sb.from("reminder_lists").select("*").order("name");
@@ -668,15 +708,21 @@ function selectList(listId, color) {
 }
 
 function renderRemindersTile() {
-  const el = document.getElementById("reminders-list");
+  const el    = document.getElementById("reminders-list");
+  const addBar = document.getElementById("reminders-add");
   if (!activeListId) {
     el.innerHTML = '<div class="empty">Select a list above to view</div>';
     document.getElementById("reminder-count").textContent = "";
+    addBar.style.display = "none";
     return;
   }
+  addBar.style.display = "flex";
+  const list  = reminderLists.find(l => l.id === activeListId);
+  const input = document.getElementById("reminders-input");
+  if (list) input.placeholder = `Add to ${list.name}\u2026`;
   const todos = allReminders.filter(r => r.list_id === activeListId);
-  document.getElementById("reminder-count").textContent = todos.length ? `${todos.length} pending` : "All clear ✓";
-  if (!todos.length) { el.innerHTML = '<div class="empty">All clear ✓</div>'; return; }
+  document.getElementById("reminder-count").textContent = todos.length ? `${todos.length} pending` : "All clear \u2713";
+  if (!todos.length) { el.innerHTML = '<div class="empty">All clear \u2713</div>'; return; }
   el.innerHTML = todos.map(t => todoRowHTML(t)).join("");
 }
 
@@ -705,13 +751,15 @@ function renderPinnedTiles() {
           </div>
         </div>
         <div class="tile-body" style="max-height:260px;">${rows}</div>
+        <div class="todo-add">
+          <input class="todo-input" id="pinned-input-${listId}"
+            placeholder="Add to ${esc(list.name)}…"
+            onkeydown="if(event.key==='Enter')addToList('${listId}','${esc(list.name)}','pinned-input-${listId}')" />
+          <button class="todo-add-btn"
+            onclick="addToList('${listId}','${esc(list.name)}','pinned-input-${listId}')">Add</button>
+        </div>
       </div>`;
   }).join("");
-
-  // Re-attach click handlers — they're inside innerHTML so need event delegation
-  container.querySelectorAll(".todo-row").forEach(row => {
-    row.addEventListener("click", () => toggleTodo(row));
-  });
 }
 
 function openAddListSheet() {
@@ -847,4 +895,3 @@ function toast(msg){const el=document.getElementById("toast");el.textContent=msg
 </script>
 </body>
 </html>
-
