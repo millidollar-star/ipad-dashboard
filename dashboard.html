@@ -334,6 +334,7 @@ const SUPABASE_ANON     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const VERIFY_PIN_URL    = "https://uodcwebbtdavpulibmco.supabase.co/functions/v1/verify-pin";
 // ─────────────────────────────────────────────────────────────────────────────
 
+
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const SESSION_KEY = "dash_session_token";
 
@@ -654,6 +655,17 @@ async function addToList(listId, listName, inputId) {
   if (pinnedListIds.includes(listId)) renderPinnedTiles();
 
   await sb.from("reminders").insert(newTodo);
+
+  // Queue the new item for write-back to Apple Reminders
+  await sb.from("new_items_queue").insert({
+    reminder_id: newId,
+    list_name:   listName,
+    title:       title,
+    notes:       null,
+    due_date:    null,
+    priority:    0,
+  });
+
   toast("Added — will sync to Reminders shortly");
 }
 
